@@ -5,14 +5,14 @@ import re
 from docx import Document
 
 def parse_docx_to_html(file_buffer):
-    """Convert DOCX to plain text (no HTML tags)"""
+    """Convert DOCX to plain text and detect fields"""
     try:
         doc = Document(io.BytesIO(file_buffer))
         text_parts = []
         all_fields = []
         seen_fields = set()
         
-        # Extract paragraphs
+        # Extract paragraphs and detect fields
         for para in doc.paragraphs:
             if para.text and para.text.strip():
                 raw_text = para.text.strip()
@@ -21,13 +21,16 @@ def parse_docx_to_html(file_buffer):
                 raw_text = re.sub(r'\s+', ' ', raw_text)
                 text_parts.append(raw_text)
                 
-                # Find placeholders
+                # Find placeholders like [Field Name] or {{Field Name}}
                 fields = re.findall(r'\[([^\]]+)\]', raw_text)
                 fields += re.findall(r'\{\{([^}]+)\}\}', raw_text)
                 
                 for field in fields:
                     field_clean = field.strip()
+                    # Skip if it's a URL or looks like XML
                     if field_clean.startswith('http') or '<' in field_clean:
+                        continue
+                    if len(field_clean) > 50:  # Skip very long matches
                         continue
                     field_name = field_clean.lower().replace(' ', '_')
                     field_name = re.sub(r'[^a-z0-9_]', '', field_name)
@@ -36,31 +39,14 @@ def parse_docx_to_html(file_buffer):
                         all_fields.append({
                             'name': field_name,
                             'label': field_clean,
-                            'type': 'text'
+                            'type': 'date' if 'date' in field_name or 'date' in field_clean.lower() else 'text',
+                            'preview': field_clean
                         })
-        
-        # Extract tables
-        for table in doc.tables:
-            text_parts.append("")
-            for row in table.rows:
-                row_text = []
-                for cell in row.cells:
-                    cell_text = cell.text.strip()
-                    cell_text = re.sub(r'<[^>]+>', '', cell_text)
-                    if cell_text:
-                        row_text.append(cell_text)
-                if row_text:
-                    text_parts.append(" | ".join(row_text))
-            text_parts.append("")
         
         # Join all text
         plain_text = "\n\n".join(text_parts)
         
-        # Final cleanup
-        plain_text = re.sub(r'\n\s*\n', '\n\n', plain_text)
-        plain_text = re.sub(r' +', ' ', plain_text)
-        
-        # Return plain text wrapped in div with white-space pre-wrap
+        # Return fields separately for selection
         html_content = f'<div class="docx-content" style="font-family: \'Times New Roman\', Times, serif; font-size: 12pt; white-space: pre-wrap; line-height: 1.6; padding: 20px;">{plain_text}</div>'
         
         return {
