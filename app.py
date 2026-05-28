@@ -1,3 +1,4 @@
+import os  # ✅ Add this at top
 import base64
 import json
 from flask import Flask, request, jsonify
@@ -5,7 +6,7 @@ from flask_cors import CORS
 from docx_parser import parse_docx_to_html
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})  # ✅ Allow all origins
 
 @app.route('/', methods=['GET'])
 def home():
@@ -18,16 +19,25 @@ def home():
 def health():
     return jsonify({'status': 'healthy'})
 
-@app.route('/parse-docx', methods=['POST'])
+@app.route('/parse-docx', methods=['POST', 'OPTIONS'])  # ✅ Add OPTIONS for CORS
 def parse_docx():
+    # Handle preflight request
+    if request.method == 'OPTIONS':
+        return '', 200
+    
     try:
         file_buffer = None
+        
+        print(f"📥 Request method: {request.method}")
+        print(f"📥 Content-Type: {request.content_type}")
+        print(f"📥 Files: {request.files}")
+        print(f"📥 Is JSON: {request.is_json}")
         
         # Case 1: multipart/form-data (for frontend FormData)
         if 'file' in request.files:
             file = request.files['file']
             file_buffer = file.read()
-            print("📁 Received file via multipart/form-data")
+            print(f"📁 Received file via multipart/form-data: {file.filename}")
         
         # Case 2: JSON with base64 (for Node.js backend)
         elif request.is_json:
@@ -40,6 +50,8 @@ def parse_docx():
             return jsonify({'success': False, 'error': 'No file provided'}), 400
         
         result = parse_docx_to_html(file_buffer)
+        print(f"✅ Parse result success: {result['success']}")
+        print(f"✅ Fields found: {len(result.get('fields', []))}")
         
         if result['success']:
             return jsonify({
@@ -56,5 +68,9 @@ def parse_docx():
     except Exception as e:
         print(f"❌ Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001)
+    # ✅ Railway uses PORT environment variable, default is 8080
+    port = int(os.environ.get('PORT', 8080))
+    print(f"🚀 Starting server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
