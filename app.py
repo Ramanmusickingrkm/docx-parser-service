@@ -21,15 +21,24 @@ def health():
 @app.route('/parse-docx', methods=['POST'])
 def parse_docx():
     try:
-        data = request.get_json()
+        file_buffer = None
         
-        if not data or 'file' not in data:
+        # Case 1: multipart/form-data (for frontend FormData)
+        if 'file' in request.files:
+            file = request.files['file']
+            file_buffer = file.read()
+            print("📁 Received file via multipart/form-data")
+        
+        # Case 2: JSON with base64 (for Node.js backend)
+        elif request.is_json:
+            data = request.get_json()
+            if data and 'file' in data:
+                file_buffer = base64.b64decode(data['file'])
+                print("📁 Received file via JSON base64")
+        
+        if not file_buffer:
             return jsonify({'success': False, 'error': 'No file provided'}), 400
         
-        # Decode base64 file
-        file_buffer = base64.b64decode(data['file'])
-        
-        # Parse DOCX
         result = parse_docx_to_html(file_buffer)
         
         if result['success']:
@@ -45,7 +54,7 @@ def parse_docx():
             return jsonify({'success': False, 'error': result.get('error')}), 500
             
     except Exception as e:
+        print(f"❌ Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
